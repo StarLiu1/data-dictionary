@@ -1,11 +1,11 @@
-import DataDictionaryApp from './data_dictionary_ui';
-// import DataDictionaryApp from './data_dictionary_ui_standalone';
+import { GitHubAuthProvider } from './GitHubAuthProvider.jsx';
+import DataDictionaryUI from './data_dictionary_ui.jsx';
 
 function App() {
   return (
-    <div>
-      <DataDictionaryApp />
-    </div>
+    <GitHubAuthProvider>
+      <DataDictionaryUI />
+    </GitHubAuthProvider>
   );
 }
 

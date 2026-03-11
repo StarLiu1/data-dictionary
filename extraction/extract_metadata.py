@@ -106,20 +106,29 @@ def get_table_detail(spark, schema, table_name):
         df = spark.sql(f"DESCRIBE TABLE EXTENDED {full_name}")
         rows = df.collect()
 
-        # DESCRIBE EXTENDED has a section after a blank-row separator
-        # with key-value metadata (col_name = key, data_type = value)
+        # DESCRIBE EXTENDED returns columns first, then a separator row,
+        # then key-value metadata (col_name = key, data_type = value).
+        # Keys include: Catalog, Database, Table, Created Time, Last Access,
+        # Created By, Type, Comment, Location, Provider, Owner, Table Properties
         in_detail = False
         detail = {}
         for row in rows:
             col_name = row.col_name.strip() if row.col_name else ""
-            if col_name == "" or col_name.startswith("# Detailed Table"):
+            if col_name.startswith("# Detailed Table") or col_name.startswith("# Partition"):
                 in_detail = True
                 continue
-            if in_detail and col_name:
+            if col_name == "" and not in_detail:
+                in_detail = True
+                continue
+            if in_detail and col_name and not col_name.startswith("#"):
                 val = row.data_type.strip() if row.data_type else ""
+                # Skip Table Properties — too long, not useful for master index
+                if col_name == "Table Properties":
+                    continue
                 detail[col_name] = val
         return detail
-    except Exception:
+    except Exception as e:
+        print(f"  Warning: DESCRIBE EXTENDED failed for {table_name}: {e}")
         return {}
 
 

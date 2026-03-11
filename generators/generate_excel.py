@@ -55,13 +55,24 @@ def create_master_sheet(wb, tables_meta):
     ws = wb.active
     ws.title = "Master Index"
 
-    headers = ["#", "Table Name", "Column Count", "Type", "Owner", "Description"]
-    col_widths = [6, 40, 15, 15, 25, 50]
+    headers = [
+        "#", "Table Name", "Column Count", "Catalog", "Database",
+        "Type", "Comment", "Created Time", "Last Access", "Created By",
+        "Provider", "Owner", "Location"
+    ]
+    col_widths = [6, 40, 13, 15, 15, 12, 45, 25, 20, 15, 10, 30, 60]
 
     for i, (h, w) in enumerate(zip(headers, col_widths), 1):
         ws.cell(row=1, column=i, value=h)
         ws.column_dimensions[get_column_letter(i)].width = w
     _style_header(ws, 1, len(headers))
+
+    # Map header names to the keys from DESCRIBE EXTENDED output
+    detail_keys = [
+        None, None, None, "Catalog", "Database",
+        "Type", "Comment", "Created Time", "Last Access", "Created By",
+        "Provider", "Owner", "Location"
+    ]
 
     for idx, table in enumerate(tables_meta):
         row = idx + 2
@@ -69,33 +80,35 @@ def create_master_sheet(wb, tables_meta):
         col_count = len(table["columns"])
         sheet_name = _truncate_sheet_name(t_name)
         detail = table.get("detail", {})
+        is_alt = idx % 2 == 1
 
-        ws.cell(row=row, column=1, value=idx + 1)
-        _style_body_cell(ws.cell(row=row, column=1), idx % 2 == 1)
-        ws.cell(row=row, column=1).alignment = CENTER
+        # Col 1: row number
+        c = ws.cell(row=row, column=1, value=idx + 1)
+        _style_body_cell(c, is_alt)
+        c.alignment = CENTER
 
+        # Col 2: table name with hyperlink
         cell = ws.cell(row=row, column=2, value=t_name)
         cell.hyperlink = f"#'{sheet_name}'!A1"
         cell.font = LINK_FONT
         cell.border = THIN_BORDER
-        if idx % 2 == 1:
+        if is_alt:
             cell.fill = ALT_FILL
 
-        c3 = ws.cell(row=row, column=3, value=col_count)
-        _style_body_cell(c3, idx % 2 == 1)
-        c3.alignment = CENTER
+        # Col 3: column count
+        c = ws.cell(row=row, column=3, value=col_count)
+        _style_body_cell(c, is_alt)
+        c.alignment = CENTER
 
-        c4 = ws.cell(row=row, column=4, value=detail.get("Type", ""))
-        _style_body_cell(c4, idx % 2 == 1)
-
-        c5 = ws.cell(row=row, column=5, value=detail.get("Owner", ""))
-        _style_body_cell(c5, idx % 2 == 1)
-
-        c6 = ws.cell(row=row, column=6, value="")
-        _style_body_cell(c6, idx % 2 == 1)
+        # Cols 4+: detail fields
+        for ci in range(3, len(detail_keys)):
+            key = detail_keys[ci]
+            val = detail.get(key, "") if key else ""
+            c = ws.cell(row=row, column=ci + 1, value=val)
+            _style_body_cell(c, is_alt)
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:F{len(tables_meta) + 1}"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(tables_meta) + 1}"
 
 
 def create_table_sheet(wb, table_meta, table_index):

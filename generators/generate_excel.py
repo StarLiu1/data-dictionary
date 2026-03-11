@@ -55,8 +55,8 @@ def create_master_sheet(wb, tables_meta):
     ws = wb.active
     ws.title = "Master Index"
 
-    headers = ["#", "Table Name", "Column Count", "Description"]
-    col_widths = [6, 40, 15, 50]
+    headers = ["#", "Table Name", "Column Count", "Type", "Owner", "Description"]
+    col_widths = [6, 40, 15, 15, 25, 50]
 
     for i, (h, w) in enumerate(zip(headers, col_widths), 1):
         ws.cell(row=1, column=i, value=h)
@@ -68,6 +68,7 @@ def create_master_sheet(wb, tables_meta):
         t_name = table["table_name"]
         col_count = len(table["columns"])
         sheet_name = _truncate_sheet_name(t_name)
+        detail = table.get("detail", {})
 
         ws.cell(row=row, column=1, value=idx + 1)
         _style_body_cell(ws.cell(row=row, column=1), idx % 2 == 1)
@@ -84,11 +85,17 @@ def create_master_sheet(wb, tables_meta):
         _style_body_cell(c3, idx % 2 == 1)
         c3.alignment = CENTER
 
-        c4 = ws.cell(row=row, column=4, value="")
+        c4 = ws.cell(row=row, column=4, value=detail.get("Type", ""))
         _style_body_cell(c4, idx % 2 == 1)
 
+        c5 = ws.cell(row=row, column=5, value=detail.get("Owner", ""))
+        _style_body_cell(c5, idx % 2 == 1)
+
+        c6 = ws.cell(row=row, column=6, value="")
+        _style_body_cell(c6, idx % 2 == 1)
+
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:D{len(tables_meta) + 1}"
+    ws.auto_filter.ref = f"A1:F{len(tables_meta) + 1}"
 
 
 def create_table_sheet(wb, table_meta, table_index):
@@ -105,9 +112,9 @@ def create_table_sheet(wb, table_meta, table_index):
     # Row 2: column headers
     headers = [
         "table_name", "column_name", "data_type", "is_nullable",
-        "ordinal_position", "source", "description"
+        "ordinal_position", "comment", "source", "description"
     ]
-    col_widths = [30, 35, 15, 12, 12, 25, 50]
+    col_widths = [30, 35, 20, 12, 12, 45, 25, 50]
 
     for i, (h, w) in enumerate(zip(headers, col_widths), 1):
         ws.cell(row=2, column=i, value=h)
@@ -125,14 +132,15 @@ def create_table_sheet(wb, table_meta, table_index):
             col.get("data_type", ""),
             col.get("is_nullable", ""),
             col.get("ordinal_position", ""),
-            "",  # source — manual entry
-            "",  # description — manual / AI-assisted
+            col.get("comment", ""),       # from DESCRIBE or information_schema
+            "",                            # source — manual entry
+            "",                            # description — manual / AI-assisted
         ]
 
         for ci, val in enumerate(values, 1):
             cell = ws.cell(row=row, column=ci, value=val)
             _style_body_cell(cell, is_alt)
-            if ci == 5:
+            if ci in (4, 5):
                 cell.alignment = CENTER
 
     ws.freeze_panes = "A3"

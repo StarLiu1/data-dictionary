@@ -40,7 +40,10 @@ def get_tables(spark, schema):
 
 def get_columns(spark, schema, table_name):
     """
-    Return column metadata for a single table.
+    Return column metadata for a single table using DESCRIBE TABLE.
+
+    Captures column name, full data type string, and the comment field
+    (which contains column descriptions set in the schema).
 
     Parameters
     ----------
@@ -53,13 +56,13 @@ def get_columns(spark, schema, table_name):
     Returns
     -------
     list[dict]
-        Each dict contains: column_name, data_type, is_nullable.
+        Each dict contains: column_name, data_type, comment.
     """
     full_name = f"{schema}.{table_name}"
     df = spark.sql(f"DESCRIBE TABLE {full_name}")
-    
+
     columns = []
-    for row in df.collect():
+    for idx, row in enumerate(df.collect()):
         col_name = row.col_name.strip()
 
         # DESCRIBE TABLE returns partition info and blank rows after
@@ -67,13 +70,57 @@ def get_columns(spark, schema, table_name):
         if col_name == "" or col_name.startswith("#"):
             break
 
+        comment = ""
+        if hasattr(row, "comment") and row.comment:
+            comment = row.comment.strip()
+
         columns.append({
             "column_name": col_name,
             "data_type": row.data_type.strip(),
-            "is_nullable": "YES",  # default; updated below if info_schema available
+            "comment": comment,
+            "ordinal_position": idx,
         })
 
     return columns
+
+
+def get_table_detail(spark, schema, table_name):
+    """
+    Return extended table-level metadata using DESCRIBE TABLE EXTENDED.
+
+    Extracts table properties like owner, location, created time, etc.
+
+    Parameters
+    ----------
+    spark : SparkSession
+    schema : str
+    table_name : str
+
+    Returns
+    -------
+    dict
+        Table-level properties (e.g. owner, location, type, created).
+    """
+    full_name = f"{schema}.{table_name}"
+    try:
+        df = spark.sql(f"DESCRIBE TABLE EXTENDED {full_name}")
+        rows = df.collect()
+
+        # DESCRIBE EXTENDED has a section after a blank-row separator
+        # with key-value metadata (col_name = key, data_type = value)
+        in_detail = False
+        detail = {}
+        for row in rows:
+            col_name = row.col_name.strip() if row.col_name else ""
+            if col_name == "" or col_name.startswith("# Detailed Table"):
+                in_detail = True
+                continue
+            if in_detail and col_name:
+                val = row.data_type.strip() if row.data_type else ""
+                detail[col_name] = val
+        return detail
+    except Exception:
+        return {}
 
 
 def get_columns_info_schema(spark, schema, table_name):
@@ -93,7 +140,8 @@ def get_columns_info_schema(spark, schema, table_name):
     Returns
     -------
     list[dict]
-        Each dict contains: column_name, data_type, is_nullable, ordinal_position.
+        Each dict contains: column_name, data_type, is_nullable,
+        ordinal_position, comment.
     """
     catalog = schema.split(".")[0]
     schema_name = schema.split(".")[1]
@@ -102,9 +150,11 @@ def get_columns_info_schema(spark, schema, table_name):
         query = f"""
             SELECT
                 column_name,
+                full_data_type,
                 data_type,
                 is_nullable,
-                ordinal_position
+                ordinal_position,
+                comment
             FROM {catalog}.information_schema.columns
             WHERE table_schema = '{schema_name}'
               AND table_name   = '{table_name}'
@@ -114,15 +164,16 @@ def get_columns_info_schema(spark, schema, table_name):
         rows = df.collect()
 
         if len(rows) == 0:
-            # Might not have access — fall back
             return get_columns(spark, schema, table_name)
 
         return [
             {
                 "column_name": row.column_name,
-                "data_type": row.data_type,
+                "data_type": row.full_data_type if hasattr(row, "full_data_type") and row.full_data_type else row.data_type,
+                "data_type_short": row.data_type,
                 "is_nullable": row.is_nullable,
                 "ordinal_position": row.ordinal_position,
+                "comment": row.comment.strip() if row.comment else "",
             }
             for row in rows
         ]
@@ -132,7 +183,7 @@ def get_columns_info_schema(spark, schema, table_name):
         return get_columns(spark, schema, table_name)
 
 
-def extract_all(spark, schema, use_info_schema=True):
+def extract_all(spark, schema, use_info_schema=True, include_table_detail=True):
     """
     Extract full metadata for all tables in a schema.
 
@@ -144,6 +195,9 @@ def extract_all(spark, schema, use_info_schema=True):
     use_info_schema : bool
         If True, try information_schema first (richer data).
         Falls back to DESCRIBE TABLE if unavailable.
+    include_table_detail : bool
+        If True, run DESCRIBE TABLE EXTENDED to capture table-level
+        properties (owner, location, type, etc.).
 
     Returns
     -------
@@ -153,7 +207,8 @@ def extract_all(spark, schema, use_info_schema=True):
             "tables": [
                 {
                     "table_name": "...",
-                    "columns": [ { "column_name": ..., "data_type": ..., ... } ]
+                    "columns": [ { "column_name": ..., "data_type": ..., "comment": ..., ... } ],
+                    "detail": { "Owner": ..., "Type": ..., ... }
                 },
                 ...
             ]
@@ -170,10 +225,16 @@ def extract_all(spark, schema, use_info_schema=True):
     for i, table_name in enumerate(tables):
         print(f"  [{i+1}/{len(tables)}] Extracting: {table_name}")
         columns = col_fn(spark, schema, table_name)
-        result["tables"].append({
+
+        table_entry = {
             "table_name": table_name,
             "columns": columns,
-        })
+        }
+
+        if include_table_detail:
+            table_entry["detail"] = get_table_detail(spark, schema, table_name)
+
+        result["tables"].append(table_entry)
 
     print(f"\nExtraction complete: {len(tables)} tables")
     return result

@@ -2,7 +2,7 @@
 
 A reusable data dictionary package for the Hopkins de-identified EHR dataset. Extracts structured metadata from Databricks, generates a polished Excel workbook, and provides an interactive web UI for browsing.
 
-**Live site:** [data dictionary →](https://yourusername.github.io/data-dictionary/)
+**Live site:** [data dictionary →](https://StarLiu1.github.io/data-dictionary/)
 
 ## Dataset
 

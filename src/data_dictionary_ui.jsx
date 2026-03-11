@@ -496,17 +496,18 @@ export default function DataDictionaryApp() {
 
   // ── Master View ──
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-      <div style={S.app}>
-        <header style={S.header}>
-          <div style={S.headerInner}>
-            <div style={S.logo}>
-              <Icons.Database />
-              <div>
-                <div style={S.logoText}>EHR Data Dictionary</div>
-                <div style={S.schema}>{metadata.schema}</div>
-              </div>
+    
+    <div style={S.app}>
+      <header style={S.header}>
+        <div style={S.headerInner}>
+          <div style={S.logo}>
+            <Icons.Database />
+            <div>
+              <div style={S.logoText}>EHR Data Dictionary</div>
+              <div style={S.schema}>{metadata.schema}</div>
             </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={S.stats}>
               <div style={S.stat}>
                 <div style={S.statNum}>{tables.length}</div>
@@ -517,161 +518,162 @@ export default function DataDictionaryApp() {
                 <div style={S.statLabel}>Columns</div>
               </div>
             </div>
+            <SignInButton />
           </div>
-        </header>
+        </div>
+      </header>
 
-        <main style={S.main}>
-          {/* Tab bar */}
-          <div style={S.tabBar}>
-            <button style={S.tab(view === "master")} onClick={() => setView("master")}>
-              <Icons.Table /> Tables
+      <main style={S.main}>
+        {/* Tab bar */}
+        <div style={S.tabBar}>
+          <button style={S.tab(view === "master")} onClick={() => setView("master")}>
+            <Icons.Table /> Tables
+          </button>
+          <button style={S.tab(view === "columns")} onClick={() => setView("columns")}>
+            <Icons.Column /> Column Search
+          </button>
+        </div>
+
+        {/* Search bar */}
+        <div style={S.searchBar}>
+          <Icons.Search />
+          <input
+            ref={searchRef}
+            style={S.searchInput}
+            placeholder={view === "columns" ? "Search across all columns…" : "Search tables by name or description…"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: "2px" }}>
+              <Icons.X />
             </button>
-            <button style={S.tab(view === "columns")} onClick={() => setView("columns")}>
-              <Icons.Column /> Column Search
-            </button>
-          </div>
-
-          {/* Search bar */}
-          <div style={S.searchBar}>
-            <Icons.Search />
-            <input
-              ref={searchRef}
-              style={S.searchInput}
-              placeholder={view === "columns" ? "Search across all columns…" : "Search tables by name or description…"}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: "2px" }}>
-                <Icons.X />
-              </button>
-            )}
-            <span style={S.kbd}>/</span>
-          </div>
-
-          {/* Column Search View */}
-          {view === "columns" && (
-            <div>
-              {!search ? (
-                <div style={S.emptyState}>
-                  <Icons.Search />
-                  <div style={{ marginTop: "12px", fontSize: "14px" }}>Type to search across all {totalColumns.toLocaleString()} columns</div>
-                  <div style={{ fontSize: "12px", marginTop: "4px" }}>Search by column name or comment</div>
-                </div>
-              ) : filteredAllColumns.length === 0 ? (
-                <div style={S.emptyState}>
-                  <div style={{ fontSize: "14px" }}>No columns match "{search}"</div>
-                </div>
-              ) : (
-                <div style={{ ...S.card, overflow: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Table</th>
-                        <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Column</th>
-                        <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Type</th>
-                        <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Comment</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredAllColumns.map((col, idx) => (
-                        <tr key={`${col.table_name}-${col.column_name}`} style={{ ...S.tableRow, background: idx % 2 === 1 ? "#f8fafc" : "#fff" }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"}
-                          onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 1 ? "#f8fafc" : "#fff"}
-                        >
-                          <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
-                            <button onClick={() => openTable(tables.find((t) => t.table_name === col.table_name))}
-                              style={{ background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px", fontWeight: 500, padding: 0 }}
-                            >
-                              {col.table_name}
-                            </button>
-                          </td>
-                          <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
-                            <code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px" }}>{col.column_name}</code>
-                          </td>
-                          <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
-                            <TypeBadge dataType={col.data_type} />
-                          </td>
-                          <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", fontSize: "13px", color: "#64748b", maxWidth: "350px" }}>
-                            {col.comment || <span style={{ color: "#cbd5e1" }}>—</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredAllColumns.length >= 100 && (
-                    <div style={{ padding: "12px", textAlign: "center", fontSize: "12px", color: "#94a3b8", borderTop: "1px solid #f1f5f9" }}>
-                      Showing first 100 results — narrow your search for more specific matches
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           )}
+          <span style={S.kbd}>/</span>
+        </div>
 
-          {/* Master Table View */}
-          {view === "master" && (
-            <div style={{ ...S.card, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <SortHeader label="#" sortKey="table_name" currentSort={masterSort} onSort={handleMasterSort} style={{ width: "50px", textAlign: "center" }} />
-                    <SortHeader label="Table Name" sortKey="table_name" currentSort={masterSort} onSort={handleMasterSort} />
-                    <SortHeader label="Columns" sortKey="column_count" currentSort={masterSort} onSort={handleMasterSort} style={{ textAlign: "center" }} />
-                    <SortHeader label="Type" sortKey="type" currentSort={masterSort} onSort={handleMasterSort} />
-                    <SortHeader label="Description" sortKey="comment" currentSort={masterSort} onSort={handleMasterSort} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTables.map((table, idx) => {
-                    const detail = table.detail || {};
-                    return (
-                      <tr key={table.table_name} style={{ ...S.tableRow, background: idx % 2 === 1 ? "#f8fafc" : "#fff" }}
-                        onClick={() => openTable(table)}
+        {/* Column Search View */}
+        {view === "columns" && (
+          <div>
+            {!search ? (
+              <div style={S.emptyState}>
+                <Icons.Search />
+                <div style={{ marginTop: "12px", fontSize: "14px" }}>Type to search across all {totalColumns.toLocaleString()} columns</div>
+                <div style={{ fontSize: "12px", marginTop: "4px" }}>Search by column name or comment</div>
+              </div>
+            ) : filteredAllColumns.length === 0 ? (
+              <div style={S.emptyState}>
+                <div style={{ fontSize: "14px" }}>No columns match "{search}"</div>
+              </div>
+            ) : (
+              <div style={{ ...S.card, overflow: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Table</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Column</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Type</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc", position: "sticky", top: 0, zIndex: 2 }}>Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAllColumns.map((col, idx) => (
+                      <tr key={`${col.table_name}-${col.column_name}`} style={{ ...S.tableRow, background: idx % 2 === 1 ? "#f8fafc" : "#fff" }}
                         onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"}
                         onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 1 ? "#f8fafc" : "#fff"}
                       >
-                        <td style={{ padding: "12px", fontSize: "12px", color: "#94a3b8", textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>
-                          {idx + 1}
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
+                          <button onClick={() => openTable(tables.find((t) => t.table_name === col.table_name))}
+                            style={{ background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px", fontWeight: 500, padding: 0 }}
+                          >
+                            {col.table_name}
+                          </button>
                         </td>
-                        <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
-                          <code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", fontWeight: 600, color: "#1e3a5f" }}>{table.table_name}</code>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
+                          <code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px" }}>{col.column_name}</code>
                         </td>
-                        <td style={{ padding: "12px", textAlign: "center", borderBottom: "1px solid #f1f5f9", fontSize: "13px", fontWeight: 600, color: "#475569" }}>
-                          {table.columns.length}
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9" }}>
+                          <TypeBadge dataType={col.data_type} />
                         </td>
-                        <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
-                          {detail.Type && (
-                            <span style={{ ...S.badge, background: detail.Type === "MATERIALIZED_VIEW" ? "#fef3c7" : "#dcfce7", color: detail.Type === "MATERIALIZED_VIEW" ? "#92400e" : "#166534" }}>
-                              {detail.Type === "MATERIALIZED_VIEW" ? "MAT VIEW" : detail.Type}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9", fontSize: "13px", color: "#64748b", maxWidth: "450px" }}>
-                          {detail.Comment || <span style={{ color: "#cbd5e1", fontStyle: "italic" }}>No description</span>}
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", fontSize: "13px", color: "#64748b", maxWidth: "350px" }}>
+                          {col.comment || <span style={{ color: "#cbd5e1" }}>—</span>}
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filteredTables.length === 0 && (
-                <div style={S.emptyState}>
-                  <div style={{ fontSize: "14px" }}>No tables match "{search}"</div>
-                </div>
-              )}
-            </div>
-          )}
+                    ))}
+                  </tbody>
+                </table>
+                {filteredAllColumns.length >= 100 && (
+                  <div style={{ padding: "12px", textAlign: "center", fontSize: "12px", color: "#94a3b8", borderTop: "1px solid #f1f5f9" }}>
+                    Showing first 100 results — narrow your search for more specific matches
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-          {/* Footer count */}
-          {view === "master" && (
-            <div style={{ marginTop: "12px", fontSize: "12px", color: "#94a3b8", textAlign: "right" }}>
-              Showing {filteredTables.length} of {tables.length} tables
-            </div>
-          )}
-        </main>
-      </div>
-      <SignInButton />
+        {/* Master Table View */}
+        {view === "master" && (
+          <div style={{ ...S.card, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <SortHeader label="#" sortKey="table_name" currentSort={masterSort} onSort={handleMasterSort} style={{ width: "50px", textAlign: "center" }} />
+                  <SortHeader label="Table Name" sortKey="table_name" currentSort={masterSort} onSort={handleMasterSort} />
+                  <SortHeader label="Columns" sortKey="column_count" currentSort={masterSort} onSort={handleMasterSort} style={{ textAlign: "center" }} />
+                  <SortHeader label="Type" sortKey="type" currentSort={masterSort} onSort={handleMasterSort} />
+                  <SortHeader label="Description" sortKey="comment" currentSort={masterSort} onSort={handleMasterSort} />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTables.map((table, idx) => {
+                  const detail = table.detail || {};
+                  return (
+                    <tr key={table.table_name} style={{ ...S.tableRow, background: idx % 2 === 1 ? "#f8fafc" : "#fff" }}
+                      onClick={() => openTable(table)}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 1 ? "#f8fafc" : "#fff"}
+                    >
+                      <td style={{ padding: "12px", fontSize: "12px", color: "#94a3b8", textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>
+                        {idx + 1}
+                      </td>
+                      <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
+                        <code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", fontWeight: 600, color: "#1e3a5f" }}>{table.table_name}</code>
+                      </td>
+                      <td style={{ padding: "12px", textAlign: "center", borderBottom: "1px solid #f1f5f9", fontSize: "13px", fontWeight: 600, color: "#475569" }}>
+                        {table.columns.length}
+                      </td>
+                      <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
+                        {detail.Type && (
+                          <span style={{ ...S.badge, background: detail.Type === "MATERIALIZED_VIEW" ? "#fef3c7" : "#dcfce7", color: detail.Type === "MATERIALIZED_VIEW" ? "#92400e" : "#166534" }}>
+                            {detail.Type === "MATERIALIZED_VIEW" ? "MAT VIEW" : detail.Type}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9", fontSize: "13px", color: "#64748b", maxWidth: "450px" }}>
+                        {detail.Comment || <span style={{ color: "#cbd5e1", fontStyle: "italic" }}>No description</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filteredTables.length === 0 && (
+              <div style={S.emptyState}>
+                <div style={{ fontSize: "14px" }}>No tables match "{search}"</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer count */}
+        {view === "master" && (
+          <div style={{ marginTop: "12px", fontSize: "12px", color: "#94a3b8", textAlign: "right" }}>
+            Showing {filteredTables.length} of {tables.length} tables
+          </div>
+        )}
+      </main>
     </div>
+    
   );
 }

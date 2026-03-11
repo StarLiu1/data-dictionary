@@ -200,7 +200,7 @@ const styles = {
 };
 
 export default function CreateIssueModal({ tableName, columnName, onClose, onIssueCreated }) {
-  const { accessToken, isAuthenticated, signIn, isAuthenticating } = useAuth();
+  const { accessToken, isAuthenticated, signIn } = useAuth();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [priority, setPriority] = useState('medium');
@@ -264,9 +264,8 @@ export default function CreateIssueModal({ tableName, columnName, onClose, onIss
             <button
               style={styles.submitBtn}
               onClick={signIn}
-              disabled={isAuthenticating}
             >
-              {isAuthenticating ? 'Signing in…' : 'Sign in with GitHub'}
+              Sign in with GitHub
             </button>
             <div style={{ marginTop: '12px' }}>
               <button style={styles.cancelBtn} onClick={onClose}>Cancel</button>

@@ -1,61 +1,63 @@
 /**
- * GitHubAuthProvider
+ * GitHubAuthProvider — Redirect Flow
  * 
- * React context that manages GitHub authentication state.
- * Wrap your app with <GitHubAuthProvider> and use useAuth() in child components.
+ * On mount, checks the URL fragment for a token (user just returned from GitHub).
+ * If found, fetches user profile and stores auth state.
  */
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { authenticate } from './github_auth.js';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { extractTokenFromUrl, fetchUser, startSignIn } from './github_auth.js';
 
 const AuthContext = createContext(null);
 
 export function GitHubAuthProvider({ children }) {
   const [accessToken, setAccessToken] = useState(null);
   const [user, setUser] = useState(null);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [deviceCode, setDeviceCode] = useState(null); // { userCode, verificationUri }
+  const [isLoading, setIsLoading] = useState(true); // loading on mount to check URL
   const [authError, setAuthError] = useState(null);
-  const abortRef = useRef(null);
 
-  const signIn = useCallback(async () => {
-    setIsAuthenticating(true);
-    setAuthError(null);
-    setDeviceCode(null);
+  // On mount: check URL for token
+  useEffect(() => {
+    async function init() {
+      try {
+        const result = extractTokenFromUrl();
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+        if (!result) {
+          setIsLoading(false);
+          return;
+        }
 
-    try {
-      const result = await authenticate(
-        (codeData) => setDeviceCode(codeData),
-        controller.signal
-      );
-      setAccessToken(result.accessToken);
-      setUser(result.user);
-      setDeviceCode(null);
-    } catch (err) {
-      if (!controller.signal.aborted) {
+        if (result.error) {
+          setAuthError(result.error);
+          setIsLoading(false);
+          return;
+        }
+
+        // We have a token — fetch user profile
+        const userData = await fetchUser(result.accessToken);
+        setAccessToken(result.accessToken);
+        setUser({
+          login: userData.login,
+          avatarUrl: userData.avatar_url,
+          name: userData.name,
+          profileUrl: userData.html_url,
+        });
+      } catch (err) {
         setAuthError(err.message);
+      } finally {
+        setIsLoading(false);
       }
-    } finally {
-      setIsAuthenticating(false);
-      abortRef.current = null;
     }
+
+    init();
   }, []);
 
-  const cancelSignIn = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-    setIsAuthenticating(false);
-    setDeviceCode(null);
-    setAuthError(null);
+  const signIn = useCallback(() => {
+    startSignIn(); // redirects the browser
   }, []);
 
   const signOut = useCallback(() => {
     setAccessToken(null);
     setUser(null);
-    setDeviceCode(null);
     setAuthError(null);
   }, []);
 
@@ -63,11 +65,9 @@ export function GitHubAuthProvider({ children }) {
     accessToken,
     user,
     isAuthenticated: !!accessToken,
-    isAuthenticating,
-    deviceCode,
+    isLoading,
     authError,
     signIn,
-    cancelSignIn,
     signOut,
   };
 

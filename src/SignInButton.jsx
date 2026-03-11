@@ -1,10 +1,8 @@
 /**
- * SignInButton
+ * SignInButton — Redirect Flow
  * 
- * Displays in the header area. Shows:
- * - "Sign in with GitHub" when unauthenticated
- * - Device code modal during authentication
- * - User avatar + name when authenticated
+ * Simple button: click to redirect to GitHub, shows user info when authenticated.
+ * No modal needed since the redirect flow handles everything in-browser.
  */
 import { useState } from 'react';
 import { useAuth } from './GitHubAuthProvider.jsx';
@@ -62,109 +60,10 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.15s',
   },
-  // Device code modal
-  overlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10000,
-  },
-  modal: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    padding: '32px',
-    maxWidth: '420px',
-    width: '90%',
-    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-    textAlign: 'center',
-  },
-  modalTitle: {
-    fontSize: '18px',
-    fontWeight: 600,
-    color: '#24292e',
-    marginBottom: '8px',
-  },
-  modalText: {
-    fontSize: '14px',
-    color: '#586069',
-    lineHeight: 1.5,
-    marginBottom: '20px',
-  },
-  codeBox: {
-    display: 'inline-block',
-    padding: '12px 24px',
-    backgroundColor: '#f6f8fa',
-    border: '2px dashed #d0d7de',
-    borderRadius: '8px',
-    fontSize: '28px',
-    fontWeight: 700,
-    fontFamily: 'monospace',
-    letterSpacing: '4px',
-    color: '#24292e',
-    marginBottom: '20px',
-    cursor: 'pointer',
-    userSelect: 'all',
-  },
-  copiedHint: {
-    fontSize: '12px',
-    color: '#2da44e',
-    marginTop: '4px',
-    marginBottom: '12px',
-    minHeight: '18px',
-  },
-  openGitHubBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '10px 20px',
-    backgroundColor: '#2da44e',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontWeight: 600,
-    cursor: 'pointer',
-    textDecoration: 'none',
-    marginBottom: '12px',
-  },
-  waitingText: {
-    fontSize: '13px',
-    color: '#8b949e',
-    marginTop: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-  },
-  spinner: {
-    display: 'inline-block',
-    width: '14px',
-    height: '14px',
-    border: '2px solid #d0d7de',
-    borderTopColor: '#586069',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
-  },
-  cancelBtn: {
-    padding: '6px 16px',
-    backgroundColor: 'transparent',
-    color: '#586069',
-    border: '1px solid #d1d5da',
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-    marginTop: '16px',
-  },
   errorText: {
     fontSize: '13px',
     color: '#cf222e',
-    marginTop: '8px',
+    marginLeft: '8px',
   },
   githubIcon: {
     width: '16px',
@@ -172,9 +71,6 @@ const styles = {
     fill: 'currentColor',
   },
 };
-
-// Inline spinner keyframes (injected once)
-const spinnerCSS = `@keyframes spin { to { transform: rotate(360deg); } }`;
 
 function GitHubIcon() {
   return (
@@ -185,21 +81,12 @@ function GitHubIcon() {
 }
 
 export default function SignInButton() {
-  const { user, isAuthenticated, isAuthenticating, deviceCode, authError, signIn, cancelSignIn, signOut } = useAuth();
+  const { user, isAuthenticated, isLoading, authError, signIn, signOut } = useAuth();
   const [hovered, setHovered] = useState(false);
-  const [copied, setCopied] = useState(false);
 
-  const copyCode = async () => {
-    if (deviceCode?.userCode) {
-      try {
-        await navigator.clipboard.writeText(deviceCode.userCode);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Fallback: the user can manually select from the code box
-      }
-    }
-  };
+  if (isLoading) {
+    return <span style={{ fontSize: '12px', color: '#8b949e' }}>Loading…</span>;
+  }
 
   if (isAuthenticated && user) {
     return (
@@ -216,60 +103,17 @@ export default function SignInButton() {
   }
 
   return (
-    <>
-      <style>{spinnerCSS}</style>
+    <div style={styles.container}>
       <button
         style={{ ...styles.signInBtn, ...(hovered ? styles.signInBtnHover : {}) }}
         onClick={signIn}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        disabled={isAuthenticating}
       >
         <GitHubIcon />
-        {isAuthenticating ? 'Signing in…' : 'Sign in with GitHub'}
+        Sign in with GitHub
       </button>
-
-      {/* Device code modal */}
-      {isAuthenticating && deviceCode && (
-        <div style={styles.overlay} onClick={(e) => e.target === e.currentTarget && cancelSignIn()}>
-          <div style={styles.modal}>
-            <div style={styles.modalTitle}>Sign in with GitHub</div>
-            <p style={styles.modalText}>
-              Copy the code below, then click the button to open GitHub and enter it.
-            </p>
-            <div style={styles.codeBox} onClick={copyCode} title="Click to copy">
-              {deviceCode.userCode}
-            </div>
-            <div style={styles.copiedHint}>
-              {copied ? '✓ Copied to clipboard' : 'Click code to copy'}
-            </div>
-            <div>
-              <a
-                href={deviceCode.verificationUri}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={styles.openGitHubBtn}
-                onClick={copyCode}
-              >
-                <GitHubIcon /> Open GitHub
-              </a>
-            </div>
-            <div style={styles.waitingText}>
-              <span style={styles.spinner}></span>
-              Waiting for authorization…
-            </div>
-            {authError && <div style={styles.errorText}>{authError}</div>}
-            <button style={styles.cancelBtn} onClick={cancelSignIn}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Error state (no modal) */}
-      {authError && !isAuthenticating && (
-        <span style={{ ...styles.errorText, marginLeft: '8px' }}>{authError}</span>
-      )}
-    </>
+      {authError && <span style={styles.errorText}>{authError}</span>}
+    </div>
   );
 }

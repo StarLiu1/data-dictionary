@@ -132,6 +132,36 @@ def get_table_detail(spark, schema, table_name):
         return {}
 
 
+def get_row_count(spark, schema, table_name):
+    """
+    Return the approximate row count for a Delta table using DESCRIBE DETAIL.
+
+    This is essentially free — it reads Delta transaction log metadata
+    rather than scanning the table.
+
+    Parameters
+    ----------
+    spark : SparkSession
+    schema : str
+        Fully qualified schema name (e.g. "deid.derived").
+    table_name : str
+        Name of the table.
+
+    Returns
+    -------
+    int or None
+        The numRecords value from Delta metadata, or None if unavailable.
+    """
+    full_name = f"{schema}.{table_name}"
+    try:
+        df = spark.sql(f"DESCRIBE DETAIL {full_name}")
+        row = df.collect()[0]
+        return row.numRecords if hasattr(row, "numRecords") else None
+    except Exception as e:
+        print(f"  Warning: DESCRIBE DETAIL failed for {table_name}: {e}")
+        return None
+
+
 def get_columns_info_schema(spark, schema, table_name):
     """
     Return column metadata using information_schema (richer data).
@@ -192,7 +222,8 @@ def get_columns_info_schema(spark, schema, table_name):
         return get_columns(spark, schema, table_name)
 
 
-def extract_all(spark, schema, use_info_schema=True, include_table_detail=True):
+def extract_all(spark, schema, use_info_schema=True, include_table_detail=True,
+                include_row_counts=True):
     """
     Extract full metadata for all tables in a schema.
 
@@ -207,6 +238,9 @@ def extract_all(spark, schema, use_info_schema=True, include_table_detail=True):
     include_table_detail : bool
         If True, run DESCRIBE TABLE EXTENDED to capture table-level
         properties (owner, location, type, etc.).
+    include_row_counts : bool
+        If True, use DESCRIBE DETAIL to pull approximate row counts
+        from Delta table metadata (essentially free — no table scans).
 
     Returns
     -------
@@ -217,7 +251,8 @@ def extract_all(spark, schema, use_info_schema=True, include_table_detail=True):
                 {
                     "table_name": "...",
                     "columns": [ { "column_name": ..., "data_type": ..., "comment": ..., ... } ],
-                    "detail": { "Owner": ..., "Type": ..., ... }
+                    "detail": { "Owner": ..., "Type": ..., ... },
+                    "row_count": 12345
                 },
                 ...
             ]
@@ -242,6 +277,9 @@ def extract_all(spark, schema, use_info_schema=True, include_table_detail=True):
 
         if include_table_detail:
             table_entry["detail"] = get_table_detail(spark, schema, table_name)
+
+        if include_row_counts:
+            table_entry["row_count"] = get_row_count(spark, schema, table_name)
 
         result["tables"].append(table_entry)
 

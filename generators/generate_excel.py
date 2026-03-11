@@ -56,11 +56,11 @@ def create_master_sheet(wb, tables_meta):
     ws.title = "Master Index"
 
     headers = [
-        "#", "Table Name", "Column Count", "Row Count", "Catalog", "Database",
+        "#", "Table Name", "Column Count", "Catalog", "Database",
         "Type", "Comment", "Created Time", "Last Access", "Created By",
         "Provider", "Owner", "Location"
     ]
-    col_widths = [6, 40, 13, 15, 15, 15, 12, 45, 25, 20, 15, 10, 30, 60]
+    col_widths = [6, 40, 13, 15, 15, 12, 45, 25, 20, 15, 10, 30, 60]
 
     for i, (h, w) in enumerate(zip(headers, col_widths), 1):
         ws.cell(row=1, column=i, value=h)
@@ -68,9 +68,8 @@ def create_master_sheet(wb, tables_meta):
     _style_header(ws, 1, len(headers))
 
     # Map header names to the keys from DESCRIBE EXTENDED output
-    # None = handled manually (row number, table name, column count, row count)
     detail_keys = [
-        None, None, None, None, "Catalog", "Database",
+        None, None, None, "Catalog", "Database",
         "Type", "Comment", "Created Time", "Last Access", "Created By",
         "Provider", "Owner", "Location"
     ]
@@ -101,15 +100,7 @@ def create_master_sheet(wb, tables_meta):
         _style_body_cell(c, is_alt)
         c.alignment = CENTER
 
-        # Col 4: row count (from DESCRIBE DETAIL / Delta metadata)
-        row_count = table.get("row_count")
-        c = ws.cell(row=row, column=4, value=row_count if row_count is not None else "")
-        _style_body_cell(c, is_alt)
-        c.alignment = CENTER
-        if row_count is not None:
-            c.number_format = "#,##0"
-
-        # Cols 5+: detail fields
+        # Cols 4+: detail fields
         for ci in range(3, len(detail_keys)):
             key = detail_keys[ci]
             val = detail.get(key, "") if key else ""

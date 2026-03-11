@@ -134,10 +134,11 @@ def get_table_detail(spark, schema, table_name):
 
 def get_row_count(spark, schema, table_name):
     """
-    Return the approximate row count for a Delta table using DESCRIBE DETAIL.
+    Return the row count for a table.
 
-    This is essentially free — it reads Delta transaction log metadata
-    rather than scanning the table.
+    Tries DESCRIBE DETAIL first (free for Delta tables — reads transaction
+    log metadata, no table scan). Falls back to SELECT COUNT(*) for views
+    or non-Delta tables.
 
     Parameters
     ----------
@@ -150,15 +151,25 @@ def get_row_count(spark, schema, table_name):
     Returns
     -------
     int or None
-        The numRecords value from Delta metadata, or None if unavailable.
+        Row count, or None if both methods fail.
     """
     full_name = f"{schema}.{table_name}"
+
+    # Try Delta metadata first (free, no scan)
     try:
         df = spark.sql(f"DESCRIBE DETAIL {full_name}")
         row = df.collect()[0]
-        return row.numRecords if hasattr(row, "numRecords") else None
+        if hasattr(row, "numRecords") and row.numRecords is not None:
+            return row.numRecords
+    except Exception:
+        pass
+
+    # Fallback: COUNT(*) — works for views and non-Delta tables
+    try:
+        df = spark.sql(f"SELECT COUNT(*) AS cnt FROM {full_name}")
+        return df.collect()[0].cnt
     except Exception as e:
-        print(f"  Warning: DESCRIBE DETAIL failed for {table_name}: {e}")
+        print(f"  Warning: row count failed for {table_name}: {e}")
         return None
 
 

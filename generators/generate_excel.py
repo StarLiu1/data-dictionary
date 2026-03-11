@@ -96,6 +96,13 @@ def create_table_sheet(wb, table_meta, table_index):
     sheet_name = _truncate_sheet_name(t_name)
     ws = wb.create_sheet(title=sheet_name)
 
+    # Row 1: back link to Master Index
+    back_cell = ws.cell(row=1, column=1, value="\u2190 Back to Master Index")
+    back_cell.hyperlink = "#'Master Index'!A1"
+    back_cell.font = Font(name="Arial", size=10, color="2E75B6", underline="single")
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=3)
+
+    # Row 2: column headers
     headers = [
         "table_name", "column_name", "data_type", "is_nullable",
         "ordinal_position", "source", "description"
@@ -103,12 +110,13 @@ def create_table_sheet(wb, table_meta, table_index):
     col_widths = [30, 35, 15, 12, 12, 25, 50]
 
     for i, (h, w) in enumerate(zip(headers, col_widths), 1):
-        ws.cell(row=1, column=i, value=h)
+        ws.cell(row=2, column=i, value=h)
         ws.column_dimensions[get_column_letter(i)].width = w
-    _style_header(ws, 1, len(headers))
+    _style_header(ws, 2, len(headers))
 
+    # Row 3+: column data
     for idx, col in enumerate(table_meta["columns"]):
-        row = idx + 2
+        row = idx + 3
         is_alt = idx % 2 == 1
 
         values = [
@@ -127,8 +135,8 @@ def create_table_sheet(wb, table_meta, table_index):
             if ci == 5:
                 cell.alignment = CENTER
 
-    ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(table_meta['columns']) + 1}"
+    ws.freeze_panes = "A3"
+    ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}{len(table_meta['columns']) + 2}"
 
 
 def build_workbook(metadata_path, output_path):

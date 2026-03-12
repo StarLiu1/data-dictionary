@@ -5,6 +5,7 @@ import IssuesList from './IssuesList.jsx';
 import EditableField from './EditableField.jsx';
 import AdminPanel from './AdminPanel.jsx';
 import { apiFetch } from './api.js';
+import { useAuth } from './GitHubAuthProvider.jsx';
 
 // ── Icons (inline SVG to avoid dependencies) ──
 const Icons = {
@@ -107,6 +108,8 @@ export default function DataDictionaryApp() {
   const [copied, setCopied] = useState(null);
   const searchRef = useRef(null);
   const [issueRefreshKey, setIssueRefreshKey] = useState(0);
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin || false;
 
   // Load embedded metadata
   useEffect(() => {

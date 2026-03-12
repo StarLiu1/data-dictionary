@@ -35,12 +35,21 @@ export function GitHubAuthProvider({ children }) {
         // We have a token — fetch user profile
         const userData = await fetchUser(result.accessToken);
         setAccessToken(result.accessToken);
+
+        // After fetching GitHub user profile, also check admin status:
+        const authStatus = await fetch(`${API_BASE}/api/auth/me`, {
+          headers: { 'Authorization': `Bearer ${result.accessToken}` }
+        }).then(r => r.json());
+
         setUser({
           login: userData.login,
           avatarUrl: userData.avatar_url,
           name: userData.name,
           profileUrl: userData.html_url,
+          isAdmin: authStatus.is_admin,
+          role: authStatus.role,
         });
+
       } catch (err) {
         setAuthError(err.message);
       } finally {

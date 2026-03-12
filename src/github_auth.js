@@ -11,7 +11,7 @@
  * The token is passed via URL fragment (#access_token=xxx) so it never hits a server.
  */
 
-const WORKER_URL = 'https://github-oauth-proxy.star-sd-liu.workers.dev';
+const WORKER_URL = '/api/auth';
 const GITHUB_USER_URL = 'https://api.github.com/user';
 
 /**

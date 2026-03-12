@@ -4,6 +4,7 @@ import FeedbackButton from './FeedbackButton.jsx';
 import IssuesList from './IssuesList.jsx';
 import EditableField from './EditableField.jsx';
 import AdminPanel from './AdminPanel.jsx';
+import { apiFetch } from './api.js';
 
 // ── Icons (inline SVG to avoid dependencies) ──
 const Icons = {

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from ..database import get_db
 from ..models import Dictionary, EditHistory, AdminUser
@@ -159,14 +160,30 @@ async def remove_admin(github_username: str, auth_info: dict = Depends(require_a
 
 @router.get("/history")
 async def get_edit_history(
-    dict_id: int = None, table_name: str = None, limit: int = 50,
+    dict_id: int = None,
+    table_name: str = None,
+    start_date: Optional[str] = Query(None, description="Filter edits from this date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter edits up to this date (YYYY-MM-DD)"),
+    limit: int = 200,
     auth_info: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Get edit history, optionally filtered by dictionary or table."""
+    """Get edit history, optionally filtered by dictionary, table, or date range."""
     query = db.query(EditHistory).order_by(EditHistory.created_at.desc())
     if dict_id:
         query = query.filter(EditHistory.dictionary_id == dict_id)
     if table_name:
         query = query.filter(EditHistory.table_name == table_name)
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(EditHistory.created_at >= start)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD.")
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            query = query.filter(EditHistory.created_at <= end)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD.")
     return query.limit(limit).all()

@@ -4,7 +4,7 @@
  * Visible only to admins. Shows:
  * - Open issues with search, priority filter, and pagination
  * - Admin user management (add/remove)
- * - Recent edit history
+ * - Edit history with search, date range filter, and pagination
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from './GitHubAuthProvider.jsx';
@@ -52,7 +52,7 @@ const styles = {
     fontSize: '12px',
     fontWeight: 600,
   },
-  // Filter bar
+  // Filter bar (shared between issues and history)
   filterBar: {
     display: 'flex',
     gap: '10px',
@@ -102,6 +102,34 @@ const styles = {
     transition: 'all 0.15s',
     whiteSpace: 'nowrap',
   }),
+  // Date inputs
+  dateLabel: {
+    fontSize: '12px',
+    color: '#64748b',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  dateInput: {
+    padding: '5px 8px',
+    fontSize: '12px',
+    border: '1px solid #d0d7de',
+    borderRadius: '6px',
+    outline: 'none',
+    fontFamily: 'inherit',
+    background: '#fff',
+    color: '#24292e',
+  },
+  clearBtn: {
+    padding: '4px 10px',
+    borderRadius: '4px',
+    border: '1px solid #d0d7de',
+    background: '#fff',
+    color: '#6e7781',
+    fontSize: '12px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
+  },
   // Pagination
   paginationBar: {
     display: 'flex',
@@ -370,6 +398,76 @@ function SearchIcon() {
   );
 }
 
+// Shared pagination helper
+function buildPageNumbers(currentPage, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const pages = [];
+  if (currentPage <= 3) {
+    pages.push(1, 2, 3, 4, '...', totalPages);
+  } else if (currentPage >= totalPages - 2) {
+    pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+  } else {
+    pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+  }
+  return pages;
+}
+
+// Shared pagination bar component
+function PaginationBar({ currentPage, totalPages, pageSize, totalItems, filteredItems, onPageChange, onPageSizeChange }) {
+  if (filteredItems === 0) return null;
+  const safePage = Math.min(currentPage, totalPages);
+  return (
+    <div style={styles.paginationBar}>
+      <div style={styles.paginationInfo}>
+        Showing {((safePage - 1) * pageSize) + 1}–{Math.min(safePage * pageSize, filteredItems)} of {filteredItems}
+        {filteredItems !== totalItems && ` (${totalItems} total)`}
+        {' · '}
+        <select
+          style={styles.pageSizeSelect}
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => (
+            <option key={n} value={n}>{n} per page</option>
+          ))}
+        </select>
+      </div>
+
+      {totalPages > 1 && (
+        <div style={styles.paginationControls}>
+          <button
+            style={styles.pageArrow(safePage === 1)}
+            onClick={() => safePage > 1 && onPageChange(safePage - 1)}
+            disabled={safePage === 1}
+          >
+            ‹
+          </button>
+          {buildPageNumbers(safePage, totalPages).map((p, i) =>
+            p === '...' ? (
+              <span key={`ellipsis-${i}`} style={{ padding: '4px 4px', fontSize: '12px', color: '#94a3b8' }}>…</span>
+            ) : (
+              <button
+                key={p}
+                style={styles.pageBtn(p === safePage)}
+                onClick={() => onPageChange(p)}
+              >
+                {p}
+              </button>
+            )
+          )}
+          <button
+            style={styles.pageArrow(safePage === totalPages)}
+            onClick={() => safePage < totalPages && onPageChange(safePage + 1)}
+            disabled={safePage === totalPages}
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel({ dictId = 1 }) {
   const { accessToken, user } = useAuth();
   const isAdmin = user?.isAdmin || false;
@@ -381,11 +479,11 @@ export default function AdminPanel({ dictId = 1 }) {
   const [applyingIssue, setApplyingIssue] = useState(null);
   const [dismissingIssue, setDismissingIssue] = useState(null);
 
-  // Filter + pagination state
+  // Issue filter + pagination state
   const [issueSearch, setIssueSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [issuePage, setIssuePage] = useState(1);
+  const [issuePageSize, setIssuePageSize] = useState(DEFAULT_PAGE_SIZE);
 
   // Admin users state
   const [admins, setAdmins] = useState([]);
@@ -396,6 +494,13 @@ export default function AdminPanel({ dictId = 1 }) {
   // Edit history state
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  // History filter + pagination state
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyStartDate, setHistoryStartDate] = useState('');
+  const [historyEndDate, setHistoryEndDate] = useState('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   if (!isAdmin) return null;
 
@@ -433,11 +538,15 @@ export default function AdminPanel({ dictId = 1 }) {
     loadAdmins();
   }, [accessToken]);
 
-  // Load edit history
+  // Load edit history (with server-side date filtering)
   useEffect(() => {
     async function loadHistory() {
+      setHistoryLoading(true);
       try {
-        const resp = await fetch(`${API_BASE}/admin/history?dict_id=${dictId}&limit=20`, {
+        let url = `${API_BASE}/admin/history?dict_id=${dictId}&limit=200`;
+        if (historyStartDate) url += `&start_date=${historyStartDate}`;
+        if (historyEndDate) url += `&end_date=${historyEndDate}`;
+        const resp = await fetch(url, {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (resp.ok) {
@@ -450,13 +559,11 @@ export default function AdminPanel({ dictId = 1 }) {
       }
     }
     loadHistory();
-  }, [accessToken, dictId]);
+  }, [accessToken, dictId, historyStartDate, historyEndDate]);
 
-  // Filtered + paginated issues
+  // ── Issue filtering + pagination ──
   const filteredIssues = useMemo(() => {
     let result = issues;
-
-    // Text search: match against title, table name, column name, author
     if (issueSearch.trim()) {
       const q = issueSearch.toLowerCase();
       result = result.filter((issue) => {
@@ -470,27 +577,19 @@ export default function AdminPanel({ dictId = 1 }) {
         );
       });
     }
-
-    // Priority filter
     if (priorityFilter !== 'all') {
-      result = result.filter((issue) => {
-        const priority = parsePriorityFromBody(issue.body);
-        return priority === priorityFilter;
-      });
+      result = result.filter((issue) => parsePriorityFromBody(issue.body) === priorityFilter);
     }
-
     return result;
   }, [issues, issueSearch, priorityFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredIssues.length / pageSize));
-  const safePage = Math.min(currentPage, totalPages);
-
+  const issueTotalPages = Math.max(1, Math.ceil(filteredIssues.length / issuePageSize));
+  const issueSafePage = Math.min(issuePage, issueTotalPages);
   const paginatedIssues = useMemo(() => {
-    const start = (safePage - 1) * pageSize;
-    return filteredIssues.slice(start, start + pageSize);
-  }, [filteredIssues, safePage, pageSize]);
+    const start = (issueSafePage - 1) * issuePageSize;
+    return filteredIssues.slice(start, start + issuePageSize);
+  }, [filteredIssues, issueSafePage, issuePageSize]);
 
-  // Priority counts for filter chips
   const priorityCounts = useMemo(() => {
     const counts = { all: issues.length, high: 0, medium: 0, low: 0, none: 0 };
     issues.forEach((issue) => {
@@ -501,22 +600,41 @@ export default function AdminPanel({ dictId = 1 }) {
     return counts;
   }, [issues]);
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [issueSearch, priorityFilter, pageSize]);
+  useEffect(() => { setIssuePage(1); }, [issueSearch, priorityFilter, issuePageSize]);
 
-  // Add admin
+  // ── History filtering + pagination ──
+  const filteredHistory = useMemo(() => {
+    if (!historySearch.trim()) return history;
+    const q = historySearch.toLowerCase();
+    return history.filter((edit) =>
+      (edit.table_name || '').toLowerCase().includes(q) ||
+      (edit.column_name || '').toLowerCase().includes(q) ||
+      (edit.field_name || '').toLowerCase().includes(q) ||
+      (edit.edited_by || '').toLowerCase().includes(q) ||
+      (edit.new_value || '').toLowerCase().includes(q) ||
+      (edit.old_value || '').toLowerCase().includes(q)
+    );
+  }, [history, historySearch]);
+
+  const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / historyPageSize));
+  const historySafePage = Math.min(historyPage, historyTotalPages);
+  const paginatedHistory = useMemo(() => {
+    const start = (historySafePage - 1) * historyPageSize;
+    return filteredHistory.slice(start, start + historyPageSize);
+  }, [filteredHistory, historySafePage, historyPageSize]);
+
+  useEffect(() => { setHistoryPage(1); }, [historySearch, historyPageSize, historyStartDate, historyEndDate]);
+
+  const hasHistoryFilters = historySearch || historyStartDate || historyEndDate;
+
+  // ── Admin user handlers ──
   async function handleAddAdmin() {
     if (!newAdminUsername.trim()) return;
     setAdminError(null);
     try {
       const resp = await fetch(`${API_BASE}/admin/users`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify({ github_username: newAdminUsername.trim() }),
       });
       if (!resp.ok) {
@@ -531,7 +649,6 @@ export default function AdminPanel({ dictId = 1 }) {
     }
   }
 
-  // Remove admin
   async function handleRemoveAdmin(username) {
     if (!confirm(`Remove ${username} as admin?`)) return;
     try {
@@ -545,23 +662,10 @@ export default function AdminPanel({ dictId = 1 }) {
     }
   }
 
-  // Build page numbers (max ~7 visible with ellipsis)
-  function getPageNumbers() {
-    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    const pages = [];
-    if (safePage <= 3) {
-      pages.push(1, 2, 3, 4, '...', totalPages);
-    } else if (safePage >= totalPages - 2) {
-      pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
-    } else {
-      pages.push(1, '...', safePage - 1, safePage, safePage + 1, '...', totalPages);
-    }
-    return pages;
-  }
-
+  // ── Render ──
   return (
     <div style={styles.container}>
-      {/* Open Issues for Review */}
+      {/* ═══ Open Issues ═══ */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <h3 style={styles.cardTitle}>
@@ -572,46 +676,21 @@ export default function AdminPanel({ dictId = 1 }) {
               </span>
             )}
           </h3>
-          <a
-            href="https://github.com/StarLiu1/data-dictionary/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={styles.viewBtn}
-          >
+          <a href="https://github.com/StarLiu1/data-dictionary/issues" target="_blank" rel="noopener noreferrer" style={styles.viewBtn}>
             View all on GitHub
           </a>
         </div>
 
-        {/* Filter bar */}
         {!issuesLoading && issues.length > 0 && (
           <div style={styles.filterBar}>
             <div style={styles.searchWrapper}>
               <span style={styles.searchIcon}><SearchIcon /></span>
-              <input
-                style={styles.searchInput}
-                placeholder="Search by title, table, column, or author…"
-                value={issueSearch}
-                onChange={(e) => setIssueSearch(e.target.value)}
-              />
+              <input style={styles.searchInput} placeholder="Search by title, table, column, or author…" value={issueSearch} onChange={(e) => setIssueSearch(e.target.value)} />
             </div>
-            <button style={styles.filterChip(priorityFilter === 'all')} onClick={() => setPriorityFilter('all')}>
-              All ({priorityCounts.all})
-            </button>
-            {priorityCounts.high > 0 && (
-              <button style={styles.filterChip(priorityFilter === 'high')} onClick={() => setPriorityFilter(priorityFilter === 'high' ? 'all' : 'high')}>
-                🔴 High ({priorityCounts.high})
-              </button>
-            )}
-            {priorityCounts.medium > 0 && (
-              <button style={styles.filterChip(priorityFilter === 'medium')} onClick={() => setPriorityFilter(priorityFilter === 'medium' ? 'all' : 'medium')}>
-                🟡 Medium ({priorityCounts.medium})
-              </button>
-            )}
-            {priorityCounts.low > 0 && (
-              <button style={styles.filterChip(priorityFilter === 'low')} onClick={() => setPriorityFilter(priorityFilter === 'low' ? 'all' : 'low')}>
-                🟢 Low ({priorityCounts.low})
-              </button>
-            )}
+            <button style={styles.filterChip(priorityFilter === 'all')} onClick={() => setPriorityFilter('all')}>All ({priorityCounts.all})</button>
+            {priorityCounts.high > 0 && <button style={styles.filterChip(priorityFilter === 'high')} onClick={() => setPriorityFilter(priorityFilter === 'high' ? 'all' : 'high')}>🔴 High ({priorityCounts.high})</button>}
+            {priorityCounts.medium > 0 && <button style={styles.filterChip(priorityFilter === 'medium')} onClick={() => setPriorityFilter(priorityFilter === 'medium' ? 'all' : 'medium')}>🟡 Medium ({priorityCounts.medium})</button>}
+            {priorityCounts.low > 0 && <button style={styles.filterChip(priorityFilter === 'low')} onClick={() => setPriorityFilter(priorityFilter === 'low' ? 'all' : 'low')}>🟢 Low ({priorityCounts.low})</button>}
           </div>
         )}
 
@@ -626,12 +705,7 @@ export default function AdminPanel({ dictId = 1 }) {
             <div style={styles.empty}>
               No issues match your filters
               <div style={{ marginTop: '8px' }}>
-                <button
-                  style={{ ...styles.filterChip(false), fontSize: '13px' }}
-                  onClick={() => { setIssueSearch(''); setPriorityFilter('all'); }}
-                >
-                  Clear filters
-                </button>
+                <button style={{ ...styles.filterChip(false), fontSize: '13px' }} onClick={() => { setIssueSearch(''); setPriorityFilter('all'); }}>Clear filters</button>
               </div>
             </div>
           ) : (
@@ -654,26 +728,9 @@ export default function AdminPanel({ dictId = 1 }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
-                    <button
-                      style={styles.applyBtn}
-                      onClick={() => setApplyingIssue(issue)}
-                    >
-                      Apply
-                    </button>
-                    <button
-                      style={styles.dismissBtn}
-                      onClick={() => setDismissingIssue(issue)}
-                    >
-                      Dismiss
-                    </button>
-                    <a
-                      href={issue.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={styles.viewBtn}
-                    >
-                      View
-                    </a>
+                    <button style={styles.applyBtn} onClick={() => setApplyingIssue(issue)}>Apply</button>
+                    <button style={styles.dismissBtn} onClick={() => setDismissingIssue(issue)}>Dismiss</button>
+                    <a href={issue.html_url} target="_blank" rel="noopener noreferrer" style={styles.viewBtn}>View</a>
                   </div>
                 </div>
               );
@@ -681,60 +738,20 @@ export default function AdminPanel({ dictId = 1 }) {
           )}
         </div>
 
-        {/* Pagination bar */}
         {!issuesLoading && filteredIssues.length > 0 && (
-          <div style={styles.paginationBar}>
-            <div style={styles.paginationInfo}>
-              Showing {((safePage - 1) * pageSize) + 1}–{Math.min(safePage * pageSize, filteredIssues.length)} of {filteredIssues.length}
-              {filteredIssues.length !== issues.length && ` (${issues.length} total)`}
-              {' · '}
-              <select
-                style={styles.pageSizeSelect}
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>{n} per page</option>
-                ))}
-              </select>
-            </div>
-
-            {totalPages > 1 && (
-              <div style={styles.paginationControls}>
-                <button
-                  style={styles.pageArrow(safePage === 1)}
-                  onClick={() => safePage > 1 && setCurrentPage(safePage - 1)}
-                  disabled={safePage === 1}
-                >
-                  ‹
-                </button>
-                {getPageNumbers().map((p, i) =>
-                  p === '...' ? (
-                    <span key={`ellipsis-${i}`} style={{ padding: '4px 4px', fontSize: '12px', color: '#94a3b8' }}>…</span>
-                  ) : (
-                    <button
-                      key={p}
-                      style={styles.pageBtn(p === safePage)}
-                      onClick={() => setCurrentPage(p)}
-                    >
-                      {p}
-                    </button>
-                  )
-                )}
-                <button
-                  style={styles.pageArrow(safePage === totalPages)}
-                  onClick={() => safePage < totalPages && setCurrentPage(safePage + 1)}
-                  disabled={safePage === totalPages}
-                >
-                  ›
-                </button>
-              </div>
-            )}
-          </div>
+          <PaginationBar
+            currentPage={issueSafePage}
+            totalPages={issueTotalPages}
+            pageSize={issuePageSize}
+            totalItems={issues.length}
+            filteredItems={filteredIssues.length}
+            onPageChange={setIssuePage}
+            onPageSizeChange={setIssuePageSize}
+          />
         )}
       </div>
 
-      {/* Admin User Management */}
+      {/* ═══ Admin User Management ═══ */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <h3 style={styles.cardTitle}>Admin Users</h3>
@@ -749,66 +766,96 @@ export default function AdminPanel({ dictId = 1 }) {
                   <div>
                     <span style={styles.adminName}>{admin.github_username}</span>
                     <span style={styles.adminRole}>({admin.role})</span>
-                    {admin.added_by && (
-                      <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '8px' }}>
-                        added by {admin.added_by}
-                      </span>
-                    )}
+                    {admin.added_by && <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '8px' }}>added by {admin.added_by}</span>}
                   </div>
                   {admin.github_username !== user.login && (
-                    <button
-                      style={styles.removeBtn}
-                      onClick={() => handleRemoveAdmin(admin.github_username)}
-                    >
-                      Remove
-                    </button>
+                    <button style={styles.removeBtn} onClick={() => handleRemoveAdmin(admin.github_username)}>Remove</button>
                   )}
                 </div>
               ))}
               {adminError && <div style={{ ...styles.error, marginTop: '8px' }}>{adminError}</div>}
               <div style={styles.addForm}>
-                <input
-                  style={styles.addInput}
-                  placeholder="GitHub username"
-                  value={newAdminUsername}
-                  onChange={(e) => setNewAdminUsername(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddAdmin()}
-                />
-                <button style={styles.addBtn} onClick={handleAddAdmin}>
-                  Add Admin
-                </button>
+                <input style={styles.addInput} placeholder="GitHub username" value={newAdminUsername} onChange={(e) => setNewAdminUsername(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddAdmin()} />
+                <button style={styles.addBtn} onClick={handleAddAdmin}>Add Admin</button>
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Edit History */}
+      {/* ═══ Edit History ═══ */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={styles.cardTitle}>Recent Edit History</h3>
+          <h3 style={styles.cardTitle}>
+            Edit History
+            {!historyLoading && (
+              <span style={{ ...styles.badge, background: '#f1f5f9', color: '#64748b', marginLeft: '8px' }}>
+                {history.length}
+              </span>
+            )}
+          </h3>
         </div>
+
+        {/* History filter bar */}
+        {!historyLoading && (
+          <div style={styles.filterBar}>
+            <div style={styles.searchWrapper}>
+              <span style={styles.searchIcon}><SearchIcon /></span>
+              <input
+                style={styles.searchInput}
+                placeholder="Search by table, column, field, editor, or value…"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+              />
+            </div>
+            <span style={styles.dateLabel}>From</span>
+            <input
+              type="date"
+              style={styles.dateInput}
+              value={historyStartDate}
+              onChange={(e) => setHistoryStartDate(e.target.value)}
+            />
+            <span style={styles.dateLabel}>To</span>
+            <input
+              type="date"
+              style={styles.dateInput}
+              value={historyEndDate}
+              onChange={(e) => setHistoryEndDate(e.target.value)}
+            />
+            {hasHistoryFilters && (
+              <button
+                style={styles.clearBtn}
+                onClick={() => { setHistorySearch(''); setHistoryStartDate(''); setHistoryEndDate(''); }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
         <div style={styles.cardBody}>
           {historyLoading ? (
             <div style={styles.loading}>Loading…</div>
-          ) : history.length === 0 ? (
+          ) : history.length === 0 && !hasHistoryFilters ? (
             <div style={styles.empty}>No edits yet</div>
+          ) : filteredHistory.length === 0 ? (
+            <div style={styles.empty}>
+              No edits match your filters
+              <div style={{ marginTop: '8px' }}>
+                <button style={{ ...styles.filterChip(false), fontSize: '13px' }} onClick={() => { setHistorySearch(''); setHistoryStartDate(''); setHistoryEndDate(''); }}>Clear filters</button>
+              </div>
+            </div>
           ) : (
-            history.map((edit) => (
+            paginatedHistory.map((edit) => (
               <div key={edit.id} style={styles.historyRow}>
                 <div style={styles.historyAction}>
                   <strong>{edit.edited_by}</strong> updated{' '}
-                  <code style={{ fontSize: '12px', background: '#f1f5f9', padding: '1px 4px', borderRadius: '3px' }}>
-                    {edit.field_name}
-                  </code>{' '}
+                  <code style={{ fontSize: '12px', background: '#f1f5f9', padding: '1px 4px', borderRadius: '3px' }}>{edit.field_name}</code>{' '}
                   on{' '}
                   <code style={{ fontSize: '12px', background: '#f1f5f9', padding: '1px 4px', borderRadius: '3px' }}>
-                    {edit.table_name}
-                    {edit.column_name ? `.${edit.column_name}` : ''}
+                    {edit.table_name}{edit.column_name ? `.${edit.column_name}` : ''}
                   </code>
-                  {edit.github_issue_number && (
-                    <span style={{ fontSize: '12px', color: '#8b949e' }}> (from issue #{edit.github_issue_number})</span>
-                  )}
+                  {edit.github_issue_number && <span style={{ fontSize: '12px', color: '#8b949e' }}> (from issue #{edit.github_issue_number})</span>}
                 </div>
                 <div style={styles.historyValues}>
                   {edit.old_value && <span style={styles.oldValue} title={edit.old_value}>{edit.old_value}</span>}
@@ -822,30 +869,31 @@ export default function AdminPanel({ dictId = 1 }) {
             ))
           )}
         </div>
+
+        {!historyLoading && filteredHistory.length > 0 && (
+          <PaginationBar
+            currentPage={historySafePage}
+            totalPages={historyTotalPages}
+            pageSize={historyPageSize}
+            totalItems={history.length}
+            filteredItems={filteredHistory.length}
+            onPageChange={setHistoryPage}
+            onPageSizeChange={setHistoryPageSize}
+          />
+        )}
       </div>
 
-      {/* Apply Issue Modal */}
+      {/* ═══ Modals ═══ */}
       {applyingIssue && (
-        <ApplyIssueModal
-          issue={applyingIssue}
-          dictId={dictId}
+        <ApplyIssueModal issue={applyingIssue} dictId={dictId}
           onClose={() => setApplyingIssue(null)}
-          onApplied={() => {
-            setIssues((prev) => prev.filter((i) => i.id !== applyingIssue.id));
-            setApplyingIssue(null);
-          }}
+          onApplied={() => { setIssues((prev) => prev.filter((i) => i.id !== applyingIssue.id)); setApplyingIssue(null); }}
         />
       )}
-
-      {/* Dismiss Issue Modal */}
       {dismissingIssue && (
-        <DismissIssueModal
-          issue={dismissingIssue}
+        <DismissIssueModal issue={dismissingIssue}
           onClose={() => setDismissingIssue(null)}
-          onDismissed={() => {
-            setIssues((prev) => prev.filter((i) => i.id !== dismissingIssue.id));
-            setDismissingIssue(null);
-          }}
+          onDismissed={() => { setIssues((prev) => prev.filter((i) => i.id !== dismissingIssue.id)); setDismissingIssue(null); }}
         />
       )}
     </div>

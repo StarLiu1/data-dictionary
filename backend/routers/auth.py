@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import httpx
 
+from ..config import settings
 from ..database import get_db
 from ..models import AdminUser
 
@@ -47,6 +49,16 @@ async def get_me(authorization: str = Header(None), db: Session = Depends(get_db
         "role": admin.role if admin else None,
     }
 
+@router.get("/login")
+async def github_login():
+    """Redirect to GitHub authorization page to start OAuth flow."""
+    github_auth_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={settings.github_client_id}"
+        f"&scope=public_repo"
+    )
+    return RedirectResponse(github_auth_url)
+
 @router.get("/github/callback")
 async def github_callback(code: str):
     """Exchange GitHub OAuth code for access token."""
@@ -59,5 +71,6 @@ async def github_callback(code: str):
     data = resp.json()
     token = data.get("access_token")
     if not token:
-        return RedirectResponse(f"/?error={data.get('error', 'unknown')}")
+        error = data.get("error_description", data.get("error", "unknown"))
+        return RedirectResponse(f"/?error={error}")
     return RedirectResponse(f"/#access_token={token}&token_type=bearer")

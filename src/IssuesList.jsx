@@ -7,6 +7,10 @@
  * 
  * Displays: "● 3 open issues (5 total) · View on GitHub →"
  * Or:       "No feedback yet"
+ * 
+ * When `lazy={true}`, does not auto-fetch — shows a "Check feedback" link
+ * that triggers the fetch on click. Use this for column-level instances
+ * to avoid 30+ simultaneous API calls per table view.
  */
 import { useState, useEffect } from 'react';
 import { useAuth } from './GitHubAuthProvider.jsx';
@@ -79,18 +83,34 @@ const styles = {
     fontSize: '12px',
     color: '#cf222e',
   },
+  lazyLink: {
+    fontSize: '12px',
+    color: '#8b949e',
+    cursor: 'pointer',
+    background: 'none',
+    border: 'none',
+    fontFamily: 'inherit',
+    padding: 0,
+    textDecoration: 'underline',
+    textDecorationStyle: 'dotted',
+    transition: 'color 0.15s',
+  },
 };
 
-export default function IssuesList({ tableName, columnName, refreshKey }) {
+export default function IssuesList({ tableName, columnName, refreshKey, lazy = false }) {
   const { accessToken } = useAuth();
   const key = cacheKey(tableName, columnName);
 
   const [counts, setCounts] = useState(countCache.get(key) || null);
-  const [loading, setLoading] = useState(!countCache.has(key));
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [activated, setActivated] = useState(!lazy); // auto-activate if not lazy
 
+  // Only fetch if activated (not lazy, or user clicked to load)
   useEffect(() => {
-    // If cached and no refresh requested, skip fetch
+    if (!activated) return;
+
+    // If cached and no refresh requested, use cache
     if (countCache.has(key) && !refreshKey) {
       setCounts(countCache.get(key));
       setLoading(false);
@@ -117,16 +137,41 @@ export default function IssuesList({ tableName, columnName, refreshKey }) {
 
     load();
     return () => { cancelled = true; };
-  }, [accessToken, tableName, columnName, refreshKey, key]);
+  }, [accessToken, tableName, columnName, refreshKey, key, activated]);
 
   // Invalidate cache when refreshKey changes (after creating an issue)
   useEffect(() => {
     if (refreshKey) {
       countCache.delete(key);
+      // If lazy and not yet activated, auto-activate on refresh (user just created an issue)
+      if (!activated) setActivated(true);
     }
-  }, [refreshKey, key]);
+  }, [refreshKey, key, activated]);
 
   const ghUrl = buildGitHubIssuesUrl(tableName, columnName);
+
+  // Lazy mode: show a simple link until user requests the data
+  if (!activated) {
+    // Check if we already have cached data from a previous load
+    if (countCache.has(key)) {
+      const cached = countCache.get(key);
+      if (cached.total > 0) {
+        return (
+          <div style={styles.container}>
+            <span style={styles.countText}>
+              <span style={styles.openDot} />
+              {cached.open}
+            </span>
+            <a href={ghUrl} target="_blank" rel="noopener noreferrer" style={{ ...styles.link, fontSize: '12px' }}>
+              →
+            </a>
+          </div>
+        );
+      }
+      return null; // no issues, show nothing for columns
+    }
+    return null; // lazy + not loaded = show nothing (keeps the UI clean)
+  }
 
   if (loading) {
     return <div style={styles.container}><span style={styles.loading}>Loading feedback…</span></div>;
@@ -145,6 +190,8 @@ export default function IssuesList({ tableName, columnName, refreshKey }) {
   }
 
   if (!counts || counts.total === 0) {
+    // For lazy (column-level), show nothing when empty
+    if (lazy) return null;
     return (
       <div style={styles.container}>
         <span style={styles.empty}>No feedback yet</span>

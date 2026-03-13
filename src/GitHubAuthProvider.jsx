@@ -7,6 +7,8 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { extractTokenFromUrl, fetchUser, startSignIn } from './github_auth.js';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 const AuthContext = createContext(null);
 
 export function GitHubAuthProvider({ children }) {

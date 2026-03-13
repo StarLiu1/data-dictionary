@@ -507,6 +507,7 @@ export default function DataDictionaryApp() {
                           tableName={selectedTable.table_name}
                           columnName={col.column_name}
                           refreshKey={issueRefreshKey}
+                          lazy={true}
                         />
                       </div>
                     </td>

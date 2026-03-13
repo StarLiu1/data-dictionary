@@ -2,19 +2,19 @@
  * AdminPanel
  *
  * Visible only to admins. Shows:
- * - Open issues across all tables with "Apply" and "Dismiss" buttons
+ * - Open issues with search, priority filter, and pagination
  * - Admin user management (add/remove)
  * - Recent edit history
- *
- * Designed to be rendered as a tab or section in the main UI.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from './GitHubAuthProvider.jsx';
 import { fetchAllIssues, parseIssueTitle } from './github_issues.js';
 import ApplyIssueModal from './ApplyIssueModal.jsx';
 import DismissIssueModal from './DismissIssueModal.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const DEFAULT_PAGE_SIZE = 10;
 
 const styles = {
   container: {
@@ -51,6 +51,111 @@ const styles = {
     borderRadius: '12px',
     fontSize: '12px',
     fontWeight: 600,
+  },
+  // Filter bar
+  filterBar: {
+    display: 'flex',
+    gap: '10px',
+    padding: '12px 20px',
+    borderBottom: '1px solid #f1f5f9',
+    background: '#f8fafc',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  searchWrapper: {
+    position: 'relative',
+    flex: 1,
+    minWidth: '180px',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: '10px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    color: '#94a3b8',
+    pointerEvents: 'none',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  searchInput: {
+    width: '100%',
+    padding: '6px 10px 6px 32px',
+    fontSize: '13px',
+    border: '1px solid #d0d7de',
+    borderRadius: '6px',
+    outline: 'none',
+    fontFamily: 'inherit',
+    background: '#fff',
+    transition: 'border-color 0.15s',
+    boxSizing: 'border-box',
+  },
+  filterChip: (active) => ({
+    padding: '4px 12px',
+    borderRadius: '20px',
+    border: active ? '2px solid #3b82f6' : '1px solid #d0d7de',
+    background: active ? '#eff6ff' : '#fff',
+    color: active ? '#1e40af' : '#6e7781',
+    fontSize: '12px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'all 0.15s',
+    whiteSpace: 'nowrap',
+  }),
+  // Pagination
+  paginationBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 20px',
+    borderTop: '1px solid #f1f5f9',
+    background: '#f8fafc',
+    fontSize: '12px',
+    color: '#64748b',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  paginationInfo: {
+    fontSize: '12px',
+    color: '#64748b',
+  },
+  paginationControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  pageBtn: (active) => ({
+    padding: '4px 10px',
+    borderRadius: '4px',
+    border: active ? '1px solid #3b82f6' : '1px solid #d0d7de',
+    background: active ? '#eff6ff' : '#fff',
+    color: active ? '#1e40af' : '#24292e',
+    fontSize: '12px',
+    fontWeight: active ? 600 : 400,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'all 0.15s',
+  }),
+  pageArrow: (disabled) => ({
+    padding: '4px 8px',
+    borderRadius: '4px',
+    border: '1px solid #d0d7de',
+    background: '#fff',
+    color: disabled ? '#d0d7de' : '#24292e',
+    fontSize: '12px',
+    cursor: disabled ? 'default' : 'pointer',
+    fontFamily: 'inherit',
+  }),
+  pageSizeSelect: {
+    padding: '3px 6px',
+    fontSize: '12px',
+    border: '1px solid #d0d7de',
+    borderRadius: '4px',
+    background: '#fff',
+    color: '#24292e',
+    fontFamily: 'inherit',
+    cursor: 'pointer',
+    outline: 'none',
   },
   // Issues section
   issueRow: {
@@ -257,6 +362,14 @@ function parsePriorityFromBody(body) {
   return match ? match[1].toLowerCase() : null;
 }
 
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
 export default function AdminPanel({ dictId = 1 }) {
   const { accessToken, user } = useAuth();
   const isAdmin = user?.isAdmin || false;
@@ -267,6 +380,12 @@ export default function AdminPanel({ dictId = 1 }) {
   const [issuesError, setIssuesError] = useState(null);
   const [applyingIssue, setApplyingIssue] = useState(null);
   const [dismissingIssue, setDismissingIssue] = useState(null);
+
+  // Filter + pagination state
+  const [issueSearch, setIssueSearch] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   // Admin users state
   const [admins, setAdmins] = useState([]);
@@ -284,7 +403,7 @@ export default function AdminPanel({ dictId = 1 }) {
   useEffect(() => {
     async function loadIssues() {
       try {
-        const items = await fetchAllIssues(accessToken, 'open', 50);
+        const items = await fetchAllIssues(accessToken, 'open', 100);
         setIssues(items);
       } catch (err) {
         setIssuesError(err.message);
@@ -333,6 +452,60 @@ export default function AdminPanel({ dictId = 1 }) {
     loadHistory();
   }, [accessToken, dictId]);
 
+  // Filtered + paginated issues
+  const filteredIssues = useMemo(() => {
+    let result = issues;
+
+    // Text search: match against title, table name, column name, author
+    if (issueSearch.trim()) {
+      const q = issueSearch.toLowerCase();
+      result = result.filter((issue) => {
+        const parsed = parseIssueTitle(issue.title);
+        return (
+          (parsed.cleanTitle || '').toLowerCase().includes(q) ||
+          (parsed.tableName || '').toLowerCase().includes(q) ||
+          (parsed.columnName || '').toLowerCase().includes(q) ||
+          (issue.user?.login || '').toLowerCase().includes(q) ||
+          String(issue.number).includes(q)
+        );
+      });
+    }
+
+    // Priority filter
+    if (priorityFilter !== 'all') {
+      result = result.filter((issue) => {
+        const priority = parsePriorityFromBody(issue.body);
+        return priority === priorityFilter;
+      });
+    }
+
+    return result;
+  }, [issues, issueSearch, priorityFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredIssues.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+
+  const paginatedIssues = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredIssues.slice(start, start + pageSize);
+  }, [filteredIssues, safePage, pageSize]);
+
+  // Priority counts for filter chips
+  const priorityCounts = useMemo(() => {
+    const counts = { all: issues.length, high: 0, medium: 0, low: 0, none: 0 };
+    issues.forEach((issue) => {
+      const p = parsePriorityFromBody(issue.body);
+      if (p) counts[p]++;
+      else counts.none++;
+    });
+    return counts;
+  }, [issues]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [issueSearch, priorityFilter, pageSize]);
+
   // Add admin
   async function handleAddAdmin() {
     if (!newAdminUsername.trim()) return;
@@ -372,6 +545,20 @@ export default function AdminPanel({ dictId = 1 }) {
     }
   }
 
+  // Build page numbers (max ~7 visible with ellipsis)
+  function getPageNumbers() {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages = [];
+    if (safePage <= 3) {
+      pages.push(1, 2, 3, 4, '...', totalPages);
+    } else if (safePage >= totalPages - 2) {
+      pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      pages.push(1, '...', safePage - 1, safePage, safePage + 1, '...', totalPages);
+    }
+    return pages;
+  }
+
   return (
     <div style={styles.container}>
       {/* Open Issues for Review */}
@@ -394,6 +581,40 @@ export default function AdminPanel({ dictId = 1 }) {
             View all on GitHub
           </a>
         </div>
+
+        {/* Filter bar */}
+        {!issuesLoading && issues.length > 0 && (
+          <div style={styles.filterBar}>
+            <div style={styles.searchWrapper}>
+              <span style={styles.searchIcon}><SearchIcon /></span>
+              <input
+                style={styles.searchInput}
+                placeholder="Search by title, table, column, or author…"
+                value={issueSearch}
+                onChange={(e) => setIssueSearch(e.target.value)}
+              />
+            </div>
+            <button style={styles.filterChip(priorityFilter === 'all')} onClick={() => setPriorityFilter('all')}>
+              All ({priorityCounts.all})
+            </button>
+            {priorityCounts.high > 0 && (
+              <button style={styles.filterChip(priorityFilter === 'high')} onClick={() => setPriorityFilter(priorityFilter === 'high' ? 'all' : 'high')}>
+                🔴 High ({priorityCounts.high})
+              </button>
+            )}
+            {priorityCounts.medium > 0 && (
+              <button style={styles.filterChip(priorityFilter === 'medium')} onClick={() => setPriorityFilter(priorityFilter === 'medium' ? 'all' : 'medium')}>
+                🟡 Medium ({priorityCounts.medium})
+              </button>
+            )}
+            {priorityCounts.low > 0 && (
+              <button style={styles.filterChip(priorityFilter === 'low')} onClick={() => setPriorityFilter(priorityFilter === 'low' ? 'all' : 'low')}>
+                🟢 Low ({priorityCounts.low})
+              </button>
+            )}
+          </div>
+        )}
+
         <div style={styles.cardBody}>
           {issuesLoading ? (
             <div style={styles.loading}>Loading issues…</div>
@@ -401,8 +622,20 @@ export default function AdminPanel({ dictId = 1 }) {
             <div style={styles.error}>{issuesError}</div>
           ) : issues.length === 0 ? (
             <div style={styles.empty}>No open issues</div>
+          ) : filteredIssues.length === 0 ? (
+            <div style={styles.empty}>
+              No issues match your filters
+              <div style={{ marginTop: '8px' }}>
+                <button
+                  style={{ ...styles.filterChip(false), fontSize: '13px' }}
+                  onClick={() => { setIssueSearch(''); setPriorityFilter('all'); }}
+                >
+                  Clear filters
+                </button>
+              </div>
+            </div>
           ) : (
-            issues.map((issue) => {
+            paginatedIssues.map((issue) => {
               const parsed = parseIssueTitle(issue.title);
               const priority = parsePriorityFromBody(issue.body);
               return (
@@ -447,6 +680,58 @@ export default function AdminPanel({ dictId = 1 }) {
             })
           )}
         </div>
+
+        {/* Pagination bar */}
+        {!issuesLoading && filteredIssues.length > 0 && (
+          <div style={styles.paginationBar}>
+            <div style={styles.paginationInfo}>
+              Showing {((safePage - 1) * pageSize) + 1}–{Math.min(safePage * pageSize, filteredIssues.length)} of {filteredIssues.length}
+              {filteredIssues.length !== issues.length && ` (${issues.length} total)`}
+              {' · '}
+              <select
+                style={styles.pageSizeSelect}
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n} per page</option>
+                ))}
+              </select>
+            </div>
+
+            {totalPages > 1 && (
+              <div style={styles.paginationControls}>
+                <button
+                  style={styles.pageArrow(safePage === 1)}
+                  onClick={() => safePage > 1 && setCurrentPage(safePage - 1)}
+                  disabled={safePage === 1}
+                >
+                  ‹
+                </button>
+                {getPageNumbers().map((p, i) =>
+                  p === '...' ? (
+                    <span key={`ellipsis-${i}`} style={{ padding: '4px 4px', fontSize: '12px', color: '#94a3b8' }}>…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      style={styles.pageBtn(p === safePage)}
+                      onClick={() => setCurrentPage(p)}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+                <button
+                  style={styles.pageArrow(safePage === totalPages)}
+                  onClick={() => safePage < totalPages && setCurrentPage(safePage + 1)}
+                  disabled={safePage === totalPages}
+                >
+                  ›
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Admin User Management */}

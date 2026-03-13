@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import engine, Base
-from .routers import metadata, admin, auth
+from .routers import metadata, admin, auth, export
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(metadata.router, prefix="/api/metadata", tags=["metadata"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(export.router, prefix="/api/export", tags=["export"])
 
 # Serve React build as static files (after API routes)
 # app.mount("/", StaticFiles(directory="dist", html=True), name="spa")

@@ -6,3 +6,4 @@ pydantic==2.*
 pydantic-settings==2.*
 python-dotenv==1.*
 httpx==0.28.*
+openpyxl==3.1.*

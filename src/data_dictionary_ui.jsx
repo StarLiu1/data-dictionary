@@ -52,6 +52,11 @@ const Icons = {
       <rect width="14" height="14" x="8" y="8" rx="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
     </svg>
   ),
+  Download: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  ),
 };
 
 // ── Data type color coding ──
@@ -557,6 +562,23 @@ export default function DataDictionaryApp() {
                 <div style={S.statLabel}>Columns</div>
               </div>
             </div>
+            <a
+              href="/api/export/1/excel"
+              download
+              style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', backgroundColor: 'rgba(255,255,255,0.15)',
+              color: '#fff', border: '1px solid rgba(255,255,255,0.25)',
+              borderRadius: '6px', fontSize: '13px', fontWeight: 500,
+              textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s',
+              fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.25)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
+              title="Download Excel data dictionary"
+              >
+              <Icons.Download /> Export Excel
+            </a>
             <SignInButton />
           </div>
         </div>

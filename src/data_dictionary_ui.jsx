@@ -108,7 +108,7 @@ export default function DataDictionaryApp() {
   const [copied, setCopied] = useState(null);
   const searchRef = useRef(null);
   const [issueRefreshKey, setIssueRefreshKey] = useState(null);
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const isAdmin = user?.isAdmin || false;
 
   // Load embedded metadata

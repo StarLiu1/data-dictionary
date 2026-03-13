@@ -2,7 +2,7 @@
  * AdminPanel
  *
  * Visible only to admins. Shows:
- * - Open issues across all tables with "Apply" buttons
+ * - Open issues across all tables with "Apply" and "Dismiss" buttons
  * - Admin user management (add/remove)
  * - Recent edit history
  *
@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from './GitHubAuthProvider.jsx';
 import { fetchAllIssues, parseIssueTitle } from './github_issues.js';
 import ApplyIssueModal from './ApplyIssueModal.jsx';
+import DismissIssueModal from './DismissIssueModal.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -111,6 +112,19 @@ const styles = {
     cursor: 'pointer',
     whiteSpace: 'nowrap',
     transition: 'background 0.15s',
+    flexShrink: 0,
+  },
+  dismissBtn: {
+    padding: '5px 12px',
+    backgroundColor: 'transparent',
+    color: '#6e7781',
+    border: '1px solid #d0d7de',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    transition: 'all 0.15s',
     flexShrink: 0,
   },
   viewBtn: {
@@ -252,6 +266,7 @@ export default function AdminPanel({ dictId = 1 }) {
   const [issuesLoading, setIssuesLoading] = useState(true);
   const [issuesError, setIssuesError] = useState(null);
   const [applyingIssue, setApplyingIssue] = useState(null);
+  const [dismissingIssue, setDismissingIssue] = useState(null);
 
   // Admin users state
   const [admins, setAdmins] = useState([]);
@@ -412,6 +427,12 @@ export default function AdminPanel({ dictId = 1 }) {
                     >
                       Apply
                     </button>
+                    <button
+                      style={styles.dismissBtn}
+                      onClick={() => setDismissingIssue(issue)}
+                    >
+                      Dismiss
+                    </button>
                     <a
                       href={issue.html_url}
                       target="_blank"
@@ -525,9 +546,20 @@ export default function AdminPanel({ dictId = 1 }) {
           dictId={dictId}
           onClose={() => setApplyingIssue(null)}
           onApplied={() => {
-            // Remove the applied issue from the list
             setIssues((prev) => prev.filter((i) => i.id !== applyingIssue.id));
             setApplyingIssue(null);
+          }}
+        />
+      )}
+
+      {/* Dismiss Issue Modal */}
+      {dismissingIssue && (
+        <DismissIssueModal
+          issue={dismissingIssue}
+          onClose={() => setDismissingIssue(null)}
+          onDismissed={() => {
+            setIssues((prev) => prev.filter((i) => i.id !== dismissingIssue.id));
+            setDismissingIssue(null);
           }}
         />
       )}

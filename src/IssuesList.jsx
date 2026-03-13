@@ -2,15 +2,11 @@
  * IssuesList
  * 
  * Lightweight component that shows a feedback count + link to GitHub Issues.
- * Fetches the count once on first mount, then caches it in a module-level Map
- * so navigating back to the same table doesn't re-fetch.
+ * Fetches the count once on first mount (unless lazy), then caches it.
  * 
- * Displays: "● 3 open issues (5 total) · View on GitHub →"
- * Or:       "No feedback yet"
- * 
- * When `lazy={true}`, does not auto-fetch — shows a "Check feedback" link
- * that triggers the fetch on click. Use this for column-level instances
- * to avoid 30+ simultaneous API calls per table view.
+ * refreshKey is a string like "tableName::columnName::timestamp".
+ * Only re-fetches if the refreshKey starts with this component's own cache key,
+ * so submitting feedback on one column doesn't trigger re-fetches on all others.
  */
 import { useState, useEffect } from 'react';
 import { useAuth } from './GitHubAuthProvider.jsx';
@@ -26,9 +22,6 @@ function cacheKey(tableName, columnName) {
   return columnName ? `${tableName}::${columnName}` : tableName;
 }
 
-/**
- * Build a GitHub Issues URL pre-filtered by table/column search query
- */
 function buildGitHubIssuesUrl(tableName, columnName) {
   let query = `is:issue is:open`;
   if (tableName) query += ` [table:${tableName}] in:title`;
@@ -83,18 +76,6 @@ const styles = {
     fontSize: '12px',
     color: '#cf222e',
   },
-  lazyLink: {
-    fontSize: '12px',
-    color: '#8b949e',
-    cursor: 'pointer',
-    background: 'none',
-    border: 'none',
-    fontFamily: 'inherit',
-    padding: 0,
-    textDecoration: 'underline',
-    textDecorationStyle: 'dotted',
-    transition: 'color 0.15s',
-  },
 };
 
 export default function IssuesList({ tableName, columnName, refreshKey, lazy = false }) {
@@ -104,21 +85,38 @@ export default function IssuesList({ tableName, columnName, refreshKey, lazy = f
   const [counts, setCounts] = useState(countCache.get(key) || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activated, setActivated] = useState(!lazy); // auto-activate if not lazy
+  const [activated, setActivated] = useState(!lazy);
 
-  // Only fetch if activated (not lazy, or user clicked to load)
+  // Check if a refreshKey is relevant to this instance
+  function isRefreshRelevant(rk) {
+    if (!rk) return false;
+    // refreshKey format: "tableName::columnName::timestamp" or "tableName::timestamp"
+    return rk.startsWith(key + '::') || rk.startsWith(key.split('::')[0] + '::' + Date) === false && rk.startsWith(tableName + '::') && !columnName;
+  }
+
+  // Smarter relevance check
+  function shouldRefetch(rk) {
+    if (!rk) return false;
+    // Extract the table::column prefix from refreshKey (strip the timestamp)
+    const parts = rk.split('::');
+    if (columnName) {
+      // Column-level: only refresh if refreshKey is for this exact table+column
+      return parts[0] === tableName && parts[1] === columnName;
+    } else {
+      // Table-level: refresh if refreshKey is for this table (any column or table-level)
+      return parts[0] === tableName;
+    }
+  }
+
+  // Initial fetch (if not lazy)
   useEffect(() => {
     if (!activated) return;
-
-    // If cached and no refresh requested, use cache
-    if (countCache.has(key) && !refreshKey) {
+    if (countCache.has(key)) {
       setCounts(countCache.get(key));
-      setLoading(false);
       return;
     }
 
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
@@ -134,25 +132,44 @@ export default function IssuesList({ tableName, columnName, refreshKey, lazy = f
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
     return () => { cancelled = true; };
-  }, [accessToken, tableName, columnName, refreshKey, key, activated]);
+  }, [accessToken, tableName, columnName, key, activated]);
 
-  // Invalidate cache when refreshKey changes (after creating an issue)
+  // Handle refreshKey changes — only re-fetch if relevant to this instance
   useEffect(() => {
-    if (refreshKey) {
-      countCache.delete(key);
-      // If lazy and not yet activated, auto-activate on refresh (user just created an issue)
-      if (!activated) setActivated(true);
+    if (!refreshKey) return;
+    if (!shouldRefetch(refreshKey)) return;
+
+    // Activate if lazy
+    if (!activated) setActivated(true);
+
+    // Invalidate cache and re-fetch
+    countCache.delete(key);
+    let cancelled = false;
+    async function reload() {
+      setLoading(true);
+      setError(null);
+      try {
+        const items = await fetchIssues(accessToken, tableName, columnName, 'all');
+        const open = items.filter((i) => i.state === 'open').length;
+        const result = { open, total: items.length };
+        countCache.set(key, result);
+        if (!cancelled) setCounts(result);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  }, [refreshKey, key, activated]);
+    reload();
+    return () => { cancelled = true; };
+  }, [refreshKey]);
 
   const ghUrl = buildGitHubIssuesUrl(tableName, columnName);
 
-  // Lazy mode: show a simple link until user requests the data
+  // Lazy mode: show nothing until activated
   if (!activated) {
-    // Check if we already have cached data from a previous load
     if (countCache.has(key)) {
       const cached = countCache.get(key);
       if (cached.total > 0) {
@@ -168,9 +185,9 @@ export default function IssuesList({ tableName, columnName, refreshKey, lazy = f
           </div>
         );
       }
-      return null; // no issues, show nothing for columns
+      return null;
     }
-    return null; // lazy + not loaded = show nothing (keeps the UI clean)
+    return null;
   }
 
   if (loading) {
@@ -190,7 +207,6 @@ export default function IssuesList({ tableName, columnName, refreshKey, lazy = f
   }
 
   if (!counts || counts.total === 0) {
-    // For lazy (column-level), show nothing when empty
     if (lazy) return null;
     return (
       <div style={styles.container}>
@@ -218,9 +234,6 @@ export default function IssuesList({ tableName, columnName, refreshKey, lazy = f
   );
 }
 
-/**
- * Utility: clear the entire session cache (e.g., on sign-out)
- */
 export function clearIssuesCache() {
   countCache.clear();
 }

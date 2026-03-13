@@ -107,7 +107,7 @@ export default function DataDictionaryApp() {
   const [detailSort, setDetailSort] = useState({ key: "ordinal_position", dir: "asc" });
   const [copied, setCopied] = useState(null);
   const searchRef = useRef(null);
-  const [issueRefreshKey, setIssueRefreshKey] = useState(0);
+  const [issueRefreshKey, setIssueRefreshKey] = useState(null);
   const { user } = useAuth();
   const isAdmin = user?.isAdmin || false;
 
@@ -356,7 +356,7 @@ export default function DataDictionaryApp() {
                   {copied === `${metadata.schema}.${selectedTable.table_name}` && <span style={{ fontSize: "11px", color: "#22c55e" }}>Copied!</span>}
                   <FeedbackButton
                     tableName={selectedTable.table_name}
-                    onIssueCreated={() => setIssueRefreshKey(k => k + 1)}
+                    onIssueCreated={() => setIssueRefreshKey(`${selectedTable.table_name}::${Date.now()}`)}
                   />
                 </div>
                 {<EditableField
@@ -367,6 +367,7 @@ export default function DataDictionaryApp() {
                     await apiFetch(`/admin/1/tables/${selectedTable.table_name}`, {
                       method: 'PUT',
                       body: JSON.stringify({ field_name: 'Comment', new_value: newValue }),
+                      token: accessToken,
                     });
                     detail.Comment = newValue;
                   }}
@@ -490,6 +491,7 @@ export default function DataDictionaryApp() {
                           await apiFetch(`/admin/1/tables/${selectedTable.table_name}/columns/${col.column_name}`, {
                             method: 'PUT',
                             body: JSON.stringify({ field_name: 'comment', new_value: newValue }),
+                            token: accessToken,
                           });
                           col.comment = newValue;
                         }}
@@ -501,7 +503,7 @@ export default function DataDictionaryApp() {
                           tableName={selectedTable.table_name}
                           columnName={col.column_name}
                           label=""
-                          onIssueCreated={() => setIssueRefreshKey(k => k + 1)}
+                          onIssueCreated={() => setIssueRefreshKey(`${selectedTable.table_name}::${col.column_name}::${Date.now()}`)}
                         />
                         <IssuesList
                           tableName={selectedTable.table_name}
